@@ -220,9 +220,6 @@ function KnifeHandler:Reload()
 	-- set reloading
 	self.isReloading = true
 	
-	-- Fire reload event
-	-- ????????????????
-	
 	-- Reload task
 	self.reloadTask = task.delay(reloadTime, function()
 		-- Ammo/Tasks
