@@ -219,10 +219,31 @@ function ProjectileHandler:Destroy()
 	self:Cleanup()
 end
 
---// cleanup all connections safely
+--// cleanup all connections 
 function ProjectileHandler:Cleanup()
 	disconnectAndClear(self.connections)
 	self.connections = {}
+end
+
+--// extra Utility
+
+function ProjectileHandler:GetPosition()
+    return self.position
+end
+
+-- get current velocity
+function ProjectileHandler:GetVelocity()
+    return self.velocity
+end
+
+-- force set velocity
+function ProjectileHandler:SetVelocity(newVel)
+    self.velocity = newVel
+end
+
+-- force set position
+function ProjectileHandler:SetPosition(newPos)
+    self.position = newPos
 end
 
 --// return module table
