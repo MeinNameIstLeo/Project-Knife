@@ -19,7 +19,6 @@ ProjectileHandler.__index = ProjectileHandler
 
 --// create a new projectile instance
 function ProjectileHandler.new(origin:Vector3, velocity:Vector3, knifeStats:Types.KnifeStats, character:Model): Types.Projectile
-	-- create the projectile object
 	local self = setmetatable({}, ProjectileHandler)
 
 	-- store owning character
@@ -36,10 +35,13 @@ function ProjectileHandler.new(origin:Vector3, velocity:Vector3, knifeStats:Type
 	self.gravity = Vector3.new(0, -knifeStats.projectileGravity, 0)
 	-- store how long projectile can live
 	self.lifeTime = knifeStats.projectileLifetime
-	-- stre max travel distance
+	-- store max travel distance
 	self.maxRange = knifeStats.projectileRange
-	-- store explosion flag
-	self.explodes = knifeStats.explodeOnImpact
+
+	-- store explosion and phase flags
+	self.canExplode = knifeStats.explodeOnImpact
+	self.canPhase = knifeStats.canPhase
+
 	-- store connections for cleanup
 	self.connections = {}
 
@@ -54,7 +56,6 @@ function ProjectileHandler.new(origin:Vector3, velocity:Vector3, knifeStats:Type
 	self.onHit = nil
 	self.onExpire = nil
 
-	-- return constructed object
 	return self
 end
 
@@ -75,74 +76,94 @@ function ProjectileHandler:Update(dt)
 	local dir = (mag > 0) and displacement.Unit or Vector3.new(0, 0, 1)
 	-- extend displacement slightly
 	local extendedDisplacement = dir * (mag + 0.01)
-	-- calculate next positio
+	-- calculate next position
 	local nextPosition = self.position + displacement
 	-- calculate traveled distance
 	local traveledDistance = (nextPosition - self.origin).Magnitude
 
 	-- check lifetime or range expiration
 	if tick() - self.startTime > self.lifeTime or traveledDistance > self.maxRange then
-		-- mark projectile as dead
 		self.alive = false
-		-- cleanup connections
 		self:Cleanup()
-		-- fire expire callback
 		if self.onExpire then
 			self.onExpire()
 		end
-		-- stop update
 		return
 	end
 
 	-- build raycast params
 	local params = RaycastParams.new()
-	-- exclude certain instances
 	params.FilterType = Enum.RaycastFilterType.Exclude
-	-- set filter list
-	params.FilterDescendantsInstances = { self.character, workspace.fx }
+
+	-- build exclude list
+	local excludeList = { self.character, workspace.fx }
+
+	-- exclude map folder if phasing is enabled
+	if self.canPhase and workspace:FindFirstChild("MapFolder") then
+		table.insert(excludeList, workspace.MapFolder)
+	end
+
+	params.FilterDescendantsInstances = excludeList
+
 	-- create cast cframe
 	local castCFrame = CFrame.lookAlong(self.position, extendedDisplacement)
 	-- define cast box size
 	local castSize = Vector3.new(0.3, 0.25, 0.7)
+
 	-- create visual debug part
 	local part = Instance.new("Part")
-	-- anchor the part
 	part.Anchored = true
-	-- disable collisions
 	part.CanCollide = false
-	-- make it invisible
 	part.Transparency = 1
-	-- assign size
 	part.Size = castSize
-	-- parent to fx folder
 	part.Parent = workspace.fx
+
 	-- perform blockcast
 	local result = workspace:Blockcast(castCFrame, castSize, extendedDisplacement, params)
-	-- check if hit something
+
 	if result then
-		-- mark hit state
 		self.hasHit = true
 		self.alive = false
-		-- cleanup connections
 		self:Cleanup()
+
 		-- calculate hit position
 		local hitCenter = (castCFrame + dir * result.Distance).Position
-		-- update projectile position
 		self.position = hitCenter
-		-- move debug part
-		part.CFrame = castCFrame + dir * result.Distance
-		-- build result table
-		local correctedResult = {}
-		correctedResult.Position = hitCenter
-		correctedResult.Instance = result.Instance
-		correctedResult.Normal = result.Normal
-		-- call hit callback
-		if self.onHit then
-			self.onHit(correctedResult)
+
+		-- explosion logic
+		if self.canExplode then
+			-- setup overlap params
+			local overlapParams = OverlapParams.new()
+			overlapParams.FilterType = Enum.RaycastFilterType.Exclude
+			overlapParams.FilterDescendantsInstances = { self.character }
+
+			-- get parts in explosion box
+			local hitParts = workspace:GetPartsInBox(
+				CFrame.new(hitCenter),
+				Vector3.new(8, 8, 8),
+				overlapParams
+			)
+
+			-- call hit callback with explosion data
+			if self.onHit then
+				self.onHit({
+					Position = hitCenter,
+					Parts = hitParts,
+					Exploded = true
+				})
+			end
+		else
+			-- normal hit callback
+			if self.onHit then
+				self.onHit({
+					Position = hitCenter,
+					Instance = result.Instance,
+					Normal = result.Normal
+				})
+			end
 		end
-		-- cleanup visual
+
 		Debris:AddItem(part, 0.01)
-		-- stop update
 		return
 	end
 
@@ -156,20 +177,15 @@ end
 
 --// start projectile simulation
 function ProjectileHandler:Fire()
-	-- record start time
 	self.startTime = tick()
 
-	-- connect update loop
 	local heartbeatConn = RunService.Heartbeat:Connect(function(dt)
 		self:Update(dt)
 	end)
 
-	-- store connection
 	table.insert(self.connections, heartbeatConn)
 
-	-- spawn debug visuals if enabled
 	if debugMode then
-		-- create debug part
 		local debugPart = Instance.new("Part")
 		debugPart.Size = Vector3.new(0.3, 3, 0.3)
 		debugPart.Anchored = true
@@ -178,46 +194,34 @@ function ProjectileHandler:Fire()
 		debugPart.Color = Color3.new(0.3, 0.3, 0.3)
 		debugPart.Parent = workspace.fx
 
-		-- update debug part position
 		local debugConn = RunService.Heartbeat:Connect(function()
 			debugPart.Position = self.position
 		end)
 
-		-- store debug connection
 		table.insert(self.connections, debugConn)
-
-		-- cleanup debug part later
 		Debris:AddItem(debugPart, self.lifeTime)
 	end
 end
 
 --// assign hit callback
 function ProjectileHandler:SetOnHit(callback)
-	-- set on hit function
 	self.onHit = callback
 end
 
 --// assign expire callback
 function ProjectileHandler:SetOnExpire(callback)
-	-- set on expire function
 	self.onExpire = callback
 end
 
 --// manually destroy projectile
 function ProjectileHandler:Destroy()
-	-- mark as dead
 	self.alive = false
-
-	-- cleanup connections
 	self:Cleanup()
 end
 
 --// cleanup all connections safely
 function ProjectileHandler:Cleanup()
-	-- disconnect all stored connections
 	disconnectAndClear(self.connections)
-
-	-- clear table
 	self.connections = {}
 end
 
