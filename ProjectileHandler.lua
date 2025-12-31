@@ -130,6 +130,13 @@ function ProjectileHandler:Update(dt)
 		local hitCenter = (castCFrame + dir * result.Distance).Position
 		self.position = hitCenter
 
+		-- apply impulse if hit part is unanchored
+		if result.Instance and result.Instance:IsA("BasePart") and not result.Instance.Anchored then
+			local impactForce = self.stats.impactForce or 50
+			local impulse = self.velocity.Unit * impactForce
+			result.Instance.AssemblyLinearVelocity = result.Instance.AssemblyLinearVelocity + impulse
+		end
+
 		-- explosion logic
 		if self.canExplode then
 			-- setup overlap params
