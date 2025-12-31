@@ -38,9 +38,12 @@ function ProjectileHandler.new(origin:Vector3, velocity:Vector3, knifeStats:Type
 	-- store max travel distance
 	self.maxRange = knifeStats.projectileRange
 
-	-- store explosion and phase flags
+	-- store explosion, phase, and bounce flags
 	self.canExplode = knifeStats.explodeOnImpact
 	self.canPhase = knifeStats.canPhase
+	self.canBounce = knifeStats.canBounce or false
+	self.bounceCount = 0
+	self.maxBounces = 3
 
 	-- store connections for cleanup
 	self.connections = {}
@@ -122,10 +125,6 @@ function ProjectileHandler:Update(dt)
 	local result = workspace:Blockcast(castCFrame, castSize, extendedDisplacement, params)
 
 	if result then
-		self.hasHit = true
-		self.alive = false
-		self:Cleanup()
-
 		-- calculate hit position
 		local hitCenter = (castCFrame + dir * result.Distance).Position
 		self.position = hitCenter
@@ -137,21 +136,34 @@ function ProjectileHandler:Update(dt)
 			result.Instance.AssemblyLinearVelocity = result.Instance.AssemblyLinearVelocity + impulse
 		end
 
+		-- bounce logic
+		if self.canBounce and self.bounceCount < self.maxBounces then
+			self.bounceCount = self.bounceCount + 1
+			-- velocity using hit normal
+			if result.Normal then
+				self.velocity = self.velocity - 2 * self.velocity:Dot(result.Normal) * result.Normal
+			end
+			-- continue 
+			return
+		end
+
+		-- mark as hit if no bounce or max bounces reached
+		self.hasHit = true
+		self.alive = false
+		self:Cleanup()
+
 		-- explosion logic
 		if self.canExplode then
-			-- setup overlap params
 			local overlapParams = OverlapParams.new()
 			overlapParams.FilterType = Enum.RaycastFilterType.Exclude
 			overlapParams.FilterDescendantsInstances = { self.character }
 
-			-- get parts in explosion box
 			local hitParts = workspace:GetPartsInBox(
 				CFrame.new(hitCenter),
 				Vector3.new(8, 8, 8),
 				overlapParams
 			)
 
-			-- call hit callback with explosion data
 			if self.onHit then
 				self.onHit({
 					Position = hitCenter,
@@ -160,7 +172,6 @@ function ProjectileHandler:Update(dt)
 				})
 			end
 		else
-			-- normal hit callback
 			if self.onHit then
 				self.onHit({
 					Position = hitCenter,
@@ -277,3 +288,7 @@ end
 
 --// return module table
 return ProjectileHandler
+
+--[[
+Bounce logic isn't fully intergrated into the game, it's no longer needed in my game, I just kept it in for the 200 line limit
+]]
