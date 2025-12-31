@@ -246,5 +246,27 @@ function ProjectileHandler:SetPosition(newPos)
     self.position = newPos
 end
 
+--// debug utilities
+
+-- enable or disable debug visuals for this projectile
+function ProjectileHandler:EnableDebug(value)
+    self.debugEnabled = value
+end
+
+-- check if debug is enabled
+function ProjectileHandler:IsDebugEnabled()
+    return self.debugEnabled or false
+end
+
+-- print projectile state
+function ProjectileHandler:PrintState()
+    print("Projectile state:")
+    print("Position:", self.position)
+    print("Velocity:", self.velocity)
+    print("Alive:", self.alive)
+    print("HasHit:", self.hasHit)
+    print("StartTime:", self.startTime)
+end
+
 --// return module table
 return ProjectileHandler
