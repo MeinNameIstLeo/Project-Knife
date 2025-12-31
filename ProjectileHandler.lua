@@ -1,19 +1,19 @@
---// services used to access roblox systems
+--// services 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Debris = game:GetService("Debris")
 
---// basic variables for toggles and folders
+--// basic variables
 local debugMode = false
 local utility = ReplicatedStorage:WaitForChild("Utility")
 local resources = ReplicatedStorage:WaitForChild("Resources")
 
---// required modules for typing and helpers
+--// required modules
 local Types = require(resources:WaitForChild("Types"))
 local CollisionDetection = require(script.Parent:WaitForChild("CollisionDetection"))
 local disconnectAndClear = require(utility:WaitForChild("disconnectAndClear"))
 
---// projectile handler table
+--// projectile handler 
 local ProjectileHandler = {}
 ProjectileHandler.__index = ProjectileHandler
 
@@ -24,31 +24,22 @@ function ProjectileHandler.new(origin:Vector3, velocity:Vector3, knifeStats:Type
 
 	-- store owning character
 	self.character = character
-
 	-- store current position
 	self.position = origin
-
 	-- store starting position
 	self.origin = origin
-
 	-- store movement velocity
 	self.velocity = velocity
-
 	-- store stat table
 	self.stats = knifeStats
-
 	-- build gravity vector
 	self.gravity = Vector3.new(0, -knifeStats.projectileGravity, 0)
-
 	-- store how long projectile can live
 	self.lifeTime = knifeStats.projectileLifetime
-
-	-- store max travel distance
+	-- stre max travel distance
 	self.maxRange = knifeStats.projectileRange
-
 	-- store explosion flag
 	self.explodes = knifeStats.explodeOnImpact
-
 	-- store connections for cleanup
 	self.connections = {}
 
@@ -76,22 +67,16 @@ function ProjectileHandler:Update(dt)
 
 	-- apply gravity to velocity
 	self.velocity = self.velocity + self.gravity * dt
-
 	-- calculate movement displacement
 	local displacement = self.velocity * dt
-
 	-- get displacement magnitude
 	local mag = displacement.Magnitude
-
 	-- get safe direction
 	local dir = (mag > 0) and displacement.Unit or Vector3.new(0, 0, 1)
-
 	-- extend displacement slightly
 	local extendedDisplacement = dir * (mag + 0.01)
-
-	-- calculate next position
+	-- calculate next positio
 	local nextPosition = self.position + displacement
-
 	-- calculate traveled distance
 	local traveledDistance = (nextPosition - self.origin).Magnitude
 
@@ -99,97 +84,72 @@ function ProjectileHandler:Update(dt)
 	if tick() - self.startTime > self.lifeTime or traveledDistance > self.maxRange then
 		-- mark projectile as dead
 		self.alive = false
-
 		-- cleanup connections
 		self:Cleanup()
-
 		-- fire expire callback
 		if self.onExpire then
 			self.onExpire()
 		end
-
 		-- stop update
 		return
 	end
 
 	-- build raycast params
 	local params = RaycastParams.new()
-
 	-- exclude certain instances
 	params.FilterType = Enum.RaycastFilterType.Exclude
-
 	-- set filter list
 	params.FilterDescendantsInstances = { self.character, workspace.fx }
-
 	-- create cast cframe
 	local castCFrame = CFrame.lookAlong(self.position, extendedDisplacement)
-
 	-- define cast box size
 	local castSize = Vector3.new(0.3, 0.25, 0.7)
-
 	-- create visual debug part
 	local part = Instance.new("Part")
-
 	-- anchor the part
 	part.Anchored = true
-
 	-- disable collisions
 	part.CanCollide = false
-
 	-- make it invisible
 	part.Transparency = 1
-
 	-- assign size
 	part.Size = castSize
-
 	-- parent to fx folder
 	part.Parent = workspace.fx
-
 	-- perform blockcast
 	local result = workspace:Blockcast(castCFrame, castSize, extendedDisplacement, params)
-
 	-- check if hit something
 	if result then
 		-- mark hit state
 		self.hasHit = true
 		self.alive = false
-
 		-- cleanup connections
 		self:Cleanup()
-
 		-- calculate hit position
 		local hitCenter = (castCFrame + dir * result.Distance).Position
-
 		-- update projectile position
 		self.position = hitCenter
-
 		-- move debug part
 		part.CFrame = castCFrame + dir * result.Distance
-
 		-- build result table
 		local correctedResult = {}
 		correctedResult.Position = hitCenter
 		correctedResult.Instance = result.Instance
 		correctedResult.Normal = result.Normal
-
 		-- call hit callback
 		if self.onHit then
 			self.onHit(correctedResult)
 		end
-
 		-- cleanup visual
 		Debris:AddItem(part, 0.01)
-
 		-- stop update
 		return
 	end
 
 	-- move visual part forward
 	part.CFrame = castCFrame
-
 	-- update position normally
 	self.position = nextPosition
-
 	-- cleanup visual part
 	Debris:AddItem(part, 0.01)
 end
