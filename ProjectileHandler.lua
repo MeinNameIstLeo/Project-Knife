@@ -1,4 +1,4 @@
-```--// services 
+--// services 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Debris = game:GetService("Debris")
@@ -152,7 +152,7 @@ function ProjectileHandler:Update(dt)
 			if result.Normal then
 				self.velocity = self.velocity - 2 * self.velocity:Dot(result.Normal) * result.Normal
 			end
-			-- continue simulation after bounce
+			-- continue 
 			return
 		end
 
@@ -236,14 +236,9 @@ end
 
 -- clamp projectile speed
 function ProjectileHandler:ClampSpeed(minSpeed, maxSpeed)
-	-- get current speed from velocity vector
 	local speed = self.velocity.Magnitude
-
-	-- if speed is below minimum, scale velocity up
 	if speed < minSpeed then
 		self.velocity = self.velocity.Unit * minSpeed
-
-	-- if speed is above maximum, scale velocity down
 	elseif speed > maxSpeed then
 		self.velocity = self.velocity.Unit * maxSpeed
 	end
@@ -281,8 +276,9 @@ function ProjectileHandler:Cleanup()
 	self.connections = {}
 end
 
---// extra Utility
+--//  Utility
 
+-- get current position
 function ProjectileHandler:GetPosition()
 	return self.position
 end
@@ -301,8 +297,6 @@ end
 function ProjectileHandler:SetPosition(newPos)
 	self.position = newPos
 end
-
---// debug utilities
 
 -- enable or disable debug visuals for this projectile
 function ProjectileHandler:EnableDebug(value)
@@ -324,13 +318,37 @@ function ProjectileHandler:PrintState()
 	print("StartTime:", self.startTime)
 end
 
+-- return if hit
+function ProjectileHandler:HasHit()
+	return self.hasHit
+end
+
+-- return alive
+function ProjectileHandler:IsAlive()
+	return self.alive
+end
+
+-- return origin vector
+function ProjectileHandler:GetOrigin()
+	return self.origin
+end
+
+-- reset projectile
+function ProjectileHandler:Reset(origin, velocity)
+	self.position = origin
+	self.origin = origin
+	self.velocity = velocity
+	self.startTime = tick()
+	self.alive = true
+	self.hasHit = false
+end
+
+-- set bounce
+function ProjectileHandler:SetBounce(enabled, max)
+	self.canBounce = enabled
+	self.maxBounces = max or self.maxBounces
+	self.bounceCount = 0
+end
+
 --// return module table
 return ProjectileHandler
-
---[[
-Bounce logic isn't fully intergrated into the game,
-it's no longer needed in my game,
-I just kept it in for the 200 line limit
-]]```
-
-How many lines of code excluding all comments and whitespace
