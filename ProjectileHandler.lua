@@ -34,6 +34,11 @@ function ProjectileHandler.new(origin:Vector3, velocity:Vector3, knifeStats:Type
 	-- store stat table
 	self.stats = knifeStats
 
+	-- internal debug counter
+	self.debugCounter = 0 
+	self.hitCounter = 0
+	self.bounceCounter = 0
+	
 	-- build gravity vector (downward force)
 	self.gravity = Vector3.new(0, -knifeStats.projectileGravity, 0)
 
@@ -203,6 +208,19 @@ function ProjectileHandler:Update(dt)
 	-- cleanup visual part
 	Debris:AddItem(part, 0.01)
 end
+
+
+-- Increment
+function ProjectileHandler:IncrementDebug() 
+    self.debugCounter = self.debugCounter + 1 
+end                                       
+
+-- Incremenet
+function ProjectileHandler:IncrementHit()   
+    self.hitCounter = self.hitCounter + 1    
+end                                       
+
+
 
 --// start projectile simulation
 function ProjectileHandler:Fire()
