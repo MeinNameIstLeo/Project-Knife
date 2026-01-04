@@ -1,103 +1,98 @@
---// services 
+-- services used by the projectile system
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Debris = game:GetService("Debris")
 
---// basic variables
+-- shared configuration and folders
 local debugMode = false
 local utility = ReplicatedStorage:WaitForChild("Utility")
 local resources = ReplicatedStorage:WaitForChild("Resources")
 
---// required modules
+-- modules required for typing cleanup and collision logic
 local Types = require(resources:WaitForChild("Types"))
 local CollisionDetection = require(script.Parent:WaitForChild("CollisionDetection"))
 local disconnectAndClear = require(utility:WaitForChild("disconnectAndClear"))
 
---// projectile handler 
+-- projectile handler class table
 local ProjectileHandler = {}
 ProjectileHandler.__index = ProjectileHandler
 
---// create a new projectile instance
+-- creates a new projectile with initial state and rules
 function ProjectileHandler.new(origin:Vector3, velocity:Vector3, knifeStats:Types.KnifeStats, character:Model): Types.Projectile
 	local self = setmetatable({}, ProjectileHandler)
 
-	-- store owning character
+	-- character that owns this projectile
 	self.character = character
 
-	-- store current position
+	-- current and starting positions
 	self.position = origin
-	-- store starting position
 	self.origin = origin
 
-	-- store movement velocity
+	-- movement and stat data
 	self.velocity = velocity
-	-- store stat table
 	self.stats = knifeStats
 
-	-- internal debug counter
-	self.debugCounter = 0 
+	-- counters used for debugging and tracking
+	self.debugCounter = 0
 	self.hitCounter = 0
 	self.bounceCounter = 0
 	
-	-- build gravity vector (downward force)
+	-- gravity applied each update
 	self.gravity = Vector3.new(0, -knifeStats.projectileGravity, 0)
 
-	-- store how long projectile can live
+	-- lifetime and range limits
 	self.lifeTime = knifeStats.projectileLifetime
-	-- store max travel distance
 	self.maxRange = knifeStats.projectileRange
 
-	-- store explosion, phase, and bounce flags
+	-- behavior flags based on weapon stats
 	self.canExplode = knifeStats.explodeOnImpact
 	self.canPhase = knifeStats.canPhase
 	self.canBounce = knifeStats.canBounce or false
 	self.bounceCount = 0
 	self.maxBounces = 3
 
-	-- store connections for cleanup
+	-- active connections for cleanup
 	self.connections = {}
 
-	-- store internal state flags
+	-- runtime state flags
 	self.alive = true
 	self.hasHit = false
 
-	-- store time started
+	-- timestamp for age calculation
 	self.startTime = 0
 
-	-- store optional callbacks
+	-- optional external callbacks
 	self.onHit = nil
 	self.onExpire = nil
 
 	return self
 end
 
---// update projectile every frame
+-- updates projectile movement collision and lifetime
 function ProjectileHandler:Update(dt)
-	-- stop update if projectile is dead
+	-- stops logic when projectile is inactive
 	if not self.alive then
 		return
 	end
 
-	-- apply gravity to velocity
+	-- applies gravity to velocity
 	self.velocity = self.velocity + self.gravity * dt
 
-	-- calculate movement displacement
+	-- calculates movement for this frame
 	local displacement = self.velocity * dt
-	-- get displacement magnitude
 	local mag = displacement.Magnitude
 
-	-- get safe direction (prevents zero-length vectors)
+	-- ensures direction is always valid
 	local dir = (mag > 0) and displacement.Unit or Vector3.new(0, 0, 1)
 
-	-- extend displacement slightly to prevent tunneling
+	-- extends cast to avoid tunneling
 	local extendedDisplacement = dir * (mag + 0.01)
 
-	-- calculate next position
+	-- predicts next position
 	local nextPosition = self.position + displacement
-	-- calculate traveled distance
 	local traveledDistance = (nextPosition - self.origin).Magnitude
 
-	-- check lifetime or range expiration
+	-- expires projectile if limits are exceeded
 	if tick() - self.startTime > self.lifeTime or traveledDistance > self.maxRange then
 		self.alive = false
 		self:Cleanup()
@@ -107,26 +102,25 @@ function ProjectileHandler:Update(dt)
 		return
 	end
 
-	-- build raycast params
+	-- configures raycast filtering
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
 
-	-- build exclude list
+	-- objects ignored by collision checks
 	local excludeList = { self.character, workspace.fx }
 
-	-- exclude map folder if phasing is enabled
+	-- ignores map geometry when phasing is enabled
 	if self.canPhase and workspace:FindFirstChild("MapFolder") then
 		table.insert(excludeList, workspace.MapFolder)
 	end
 
 	params.FilterDescendantsInstances = excludeList
 
-	-- create cast cframe
+	-- builds cast orientation from movement direction
 	local castCFrame = CFrame.lookAlong(self.position, extendedDisplacement)
-	-- define cast box size
 	local castSize = Vector3.new(0.3, 0.25, 0.7)
 
-	-- create visual debug part (invisible hitbox)
+	-- invisible hitbox used for blockcasting
 	local part = Instance.new("Part")
 	part.Anchored = true
 	part.CanCollide = false
@@ -134,15 +128,15 @@ function ProjectileHandler:Update(dt)
 	part.Size = castSize
 	part.Parent = workspace.fx
 
-	-- perform blockcast
+	-- performs collision check
 	local result = workspace:Blockcast(castCFrame, castSize, extendedDisplacement, params)
 
 	if result then
-		-- calculate hit position
+		-- calculates impact position
 		local hitCenter = (castCFrame + dir * result.Distance).Position
 		self.position = hitCenter
 
-		-- apply impulse if hit part is unanchored
+		-- applies impulse to movable objects
 		if result.Instance and result.Instance:IsA("BasePart") and not result.Instance.Anchored then
 			local impactForce = self.stats.impactForce or 50
 			local impulse = self.velocity.Unit * impactForce
@@ -150,29 +144,26 @@ function ProjectileHandler:Update(dt)
 				result.Instance.AssemblyLinearVelocity + impulse
 		end
 
-		-- bounce logic
+		-- reflects velocity if bouncing is allowed
 		if self.canBounce and self.bounceCount < self.maxBounces then
 			self.bounceCount = self.bounceCount + 1
-			-- reflect velocity using surface normal
 			if result.Normal then
 				self.velocity = self.velocity - 2 * self.velocity:Dot(result.Normal) * result.Normal
 			end
-			-- continue simulation after bounce
 			return
 		end
 
-		-- mark as hit if no bounce or max bounces reached
+		-- finalizes hit and stops simulation
 		self.hasHit = true
 		self.alive = false
 		self:Cleanup()
 
-		-- explosion logic
+		-- handles explosion based hit logic
 		if self.canExplode then
 			local overlapParams = OverlapParams.new()
 			overlapParams.FilterType = Enum.RaycastFilterType.Exclude
 			overlapParams.FilterDescendantsInstances = { self.character }
 
-			-- area hit detection
 			local hitParts = workspace:GetPartsInBox(
 				CFrame.new(hitCenter),
 				Vector3.new(8, 8, 8),
@@ -187,7 +178,7 @@ function ProjectileHandler:Update(dt)
 				})
 			end
 		else
-			-- direct impact hit
+			-- handles direct impact hit
 			if self.onHit then
 				self.onHit({
 					Position = hitCenter,
@@ -201,32 +192,26 @@ function ProjectileHandler:Update(dt)
 		return
 	end
 
-	-- move visual part forward
+	-- advances projectile when no collision occurs
 	part.CFrame = castCFrame
-	-- update position normally
 	self.position = nextPosition
-	-- cleanup visual part
 	Debris:AddItem(part, 0.01)
 end
 
-
--- Increment
+-- increments debug counter
 function ProjectileHandler:IncrementDebug() 
-    self.debugCounter = self.debugCounter + 1 
+	self.debugCounter = self.debugCounter + 1 
 end                                       
 
--- Incremenet
+-- increments hit counter
 function ProjectileHandler:IncrementHit()   
-    self.hitCounter = self.hitCounter + 1    
+	self.hitCounter = self.hitCounter + 1    
 end                                       
 
-
-
---// start projectile simulation
+-- starts projectile simulation loop
 function ProjectileHandler:Fire()
 	self.startTime = tick()
 
-	-- heartbeat drives projectile updates
 	local heartbeatConn = RunService.Heartbeat:Connect(function(dt)
 		self:Update(dt)
 	end)
@@ -234,7 +219,7 @@ function ProjectileHandler:Fire()
 	table.insert(self.connections, heartbeatConn)
 
 	if debugMode then
-		-- visual indicator for debugging
+		-- visual tracker for projectile position
 		local debugPart = Instance.new("Part")
 		debugPart.Size = Vector3.new(0.3, 3, 0.3)
 		debugPart.Anchored = true
@@ -252,7 +237,7 @@ function ProjectileHandler:Fire()
 	end
 end
 
--- clamp projectile speed
+-- clamps velocity within limits
 function ProjectileHandler:ClampSpeed(minSpeed, maxSpeed)
 	local speed = self.velocity.Magnitude
 	if speed < minSpeed then
@@ -262,71 +247,69 @@ function ProjectileHandler:ClampSpeed(minSpeed, maxSpeed)
 	end
 end
 
--- get projectile age
+-- returns time since fired
 function ProjectileHandler:GetAge()
 	return tick() - self.startTime
 end
 
--- check if projectile expired
+-- checks if projectile is inactive
 function ProjectileHandler:IsExpired()
 	return not self.alive
 end
 
---// assign hit callback
+-- assigns hit callback
 function ProjectileHandler:SetOnHit(callback)
 	self.onHit = callback
 end
 
---// assign expire callback
+-- assigns expire callback
 function ProjectileHandler:SetOnExpire(callback)
 	self.onExpire = callback
 end
 
---// manually destroy projectile
+-- destroys projectile manually
 function ProjectileHandler:Destroy()
 	self.alive = false
 	self:Cleanup()
 end
 
---// cleanup all connections 
+-- disconnects all active connections
 function ProjectileHandler:Cleanup()
 	disconnectAndClear(self.connections)
 	self.connections = {}
 end
 
---// extra Utility
-
--- get current position
+-- returns current position
 function ProjectileHandler:GetPosition()
 	return self.position
 end
 
--- get current velocity
+-- returns current velocity
 function ProjectileHandler:GetVelocity()
 	return self.velocity
 end
 
--- force set velocity
+-- sets velocity directly
 function ProjectileHandler:SetVelocity(newVel)
 	self.velocity = newVel
 end
 
--- force set position
+-- sets position directly
 function ProjectileHandler:SetPosition(newPos)
 	self.position = newPos
 end
 
--- enable or disable debug visuals for this projectile
+-- toggles debug tracking
 function ProjectileHandler:EnableDebug(value)
 	self.debugEnabled = value
 end
 
--- check if debug is enabled
+-- checks debug state
 function ProjectileHandler:IsDebugEnabled()
 	return self.debugEnabled or false
 end
 
--- print projectile state
+-- prints internal projectile state
 function ProjectileHandler:PrintState()
 	print("Projectile state:")
 	print("Position:", self.position)
@@ -336,22 +319,22 @@ function ProjectileHandler:PrintState()
 	print("StartTime:", self.startTime)
 end
 
--- return if hit
+-- returns hit state
 function ProjectileHandler:HasHit()
 	return self.hasHit
 end
 
--- return alive
+-- returns alive state
 function ProjectileHandler:IsAlive()
 	return self.alive
 end
 
--- return origin vector
+-- returns origin position
 function ProjectileHandler:GetOrigin()
 	return self.origin
 end
 
--- reset projectile
+-- resets projectile for reuse
 function ProjectileHandler:Reset(origin, velocity)
 	self.position = origin
 	self.origin = origin
@@ -361,12 +344,12 @@ function ProjectileHandler:Reset(origin, velocity)
 	self.hasHit = false
 end
 
--- set bounce
+-- configures bounce behavior
 function ProjectileHandler:SetBounce(enabled, max)
 	self.canBounce = enabled
 	self.maxBounces = max or self.maxBounces
 	self.bounceCount = 0
 end
 
---// return module table
+-- returns module table
 return ProjectileHandler
