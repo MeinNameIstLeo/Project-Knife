@@ -85,7 +85,7 @@ function ProjectileHandler:Update(dt)
 	-- ensures direction is always valid
 	local dir = (mag > 0) and displacement.Unit or Vector3.new(0, 0, 1)
 
-	-- extends cast to avoid tunneling
+	-- extends cast to avoid phasing
 	local extendedDisplacement = dir * (mag + 0.01)
 
 	-- predicts next position
