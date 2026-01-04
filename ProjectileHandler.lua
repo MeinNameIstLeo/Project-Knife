@@ -1,4 +1,4 @@
---// services 
+```--// services 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Debris = game:GetService("Debris")
@@ -23,16 +23,20 @@ function ProjectileHandler.new(origin:Vector3, velocity:Vector3, knifeStats:Type
 
 	-- store owning character
 	self.character = character
+
 	-- store current position
 	self.position = origin
 	-- store starting position
 	self.origin = origin
+
 	-- store movement velocity
 	self.velocity = velocity
 	-- store stat table
 	self.stats = knifeStats
-	-- build gravity vector
+
+	-- build gravity vector (downward force)
 	self.gravity = Vector3.new(0, -knifeStats.projectileGravity, 0)
+
 	-- store how long projectile can live
 	self.lifeTime = knifeStats.projectileLifetime
 	-- store max travel distance
@@ -71,14 +75,18 @@ function ProjectileHandler:Update(dt)
 
 	-- apply gravity to velocity
 	self.velocity = self.velocity + self.gravity * dt
+
 	-- calculate movement displacement
 	local displacement = self.velocity * dt
 	-- get displacement magnitude
 	local mag = displacement.Magnitude
-	-- get safe direction
+
+	-- get safe direction (prevents zero-length vectors)
 	local dir = (mag > 0) and displacement.Unit or Vector3.new(0, 0, 1)
-	-- extend displacement slightly
+
+	-- extend displacement slightly to prevent tunneling
 	local extendedDisplacement = dir * (mag + 0.01)
+
 	-- calculate next position
 	local nextPosition = self.position + displacement
 	-- calculate traveled distance
@@ -113,7 +121,7 @@ function ProjectileHandler:Update(dt)
 	-- define cast box size
 	local castSize = Vector3.new(0.3, 0.25, 0.7)
 
-	-- create visual debug part
+	-- create visual debug part (invisible hitbox)
 	local part = Instance.new("Part")
 	part.Anchored = true
 	part.CanCollide = false
@@ -133,17 +141,18 @@ function ProjectileHandler:Update(dt)
 		if result.Instance and result.Instance:IsA("BasePart") and not result.Instance.Anchored then
 			local impactForce = self.stats.impactForce or 50
 			local impulse = self.velocity.Unit * impactForce
-			result.Instance.AssemblyLinearVelocity = result.Instance.AssemblyLinearVelocity + impulse
+			result.Instance.AssemblyLinearVelocity =
+				result.Instance.AssemblyLinearVelocity + impulse
 		end
 
 		-- bounce logic
 		if self.canBounce and self.bounceCount < self.maxBounces then
 			self.bounceCount = self.bounceCount + 1
-			-- velocity using hit normal
+			-- reflect velocity using surface normal
 			if result.Normal then
 				self.velocity = self.velocity - 2 * self.velocity:Dot(result.Normal) * result.Normal
 			end
-			-- continue 
+			-- continue simulation after bounce
 			return
 		end
 
@@ -158,6 +167,7 @@ function ProjectileHandler:Update(dt)
 			overlapParams.FilterType = Enum.RaycastFilterType.Exclude
 			overlapParams.FilterDescendantsInstances = { self.character }
 
+			-- area hit detection
 			local hitParts = workspace:GetPartsInBox(
 				CFrame.new(hitCenter),
 				Vector3.new(8, 8, 8),
@@ -172,6 +182,7 @@ function ProjectileHandler:Update(dt)
 				})
 			end
 		else
+			-- direct impact hit
 			if self.onHit then
 				self.onHit({
 					Position = hitCenter,
@@ -197,6 +208,7 @@ end
 function ProjectileHandler:Fire()
 	self.startTime = tick()
 
+	-- heartbeat drives projectile updates
 	local heartbeatConn = RunService.Heartbeat:Connect(function(dt)
 		self:Update(dt)
 	end)
@@ -204,6 +216,7 @@ function ProjectileHandler:Fire()
 	table.insert(self.connections, heartbeatConn)
 
 	if debugMode then
+		-- visual indicator for debugging
 		local debugPart = Instance.new("Part")
 		debugPart.Size = Vector3.new(0.3, 3, 0.3)
 		debugPart.Anchored = true
@@ -219,6 +232,31 @@ function ProjectileHandler:Fire()
 		table.insert(self.connections, debugConn)
 		Debris:AddItem(debugPart, self.lifeTime)
 	end
+end
+
+-- clamp projectile speed
+function ProjectileHandler:ClampSpeed(minSpeed, maxSpeed)
+	-- get current speed from velocity vector
+	local speed = self.velocity.Magnitude
+
+	-- if speed is below minimum, scale velocity up
+	if speed < minSpeed then
+		self.velocity = self.velocity.Unit * minSpeed
+
+	-- if speed is above maximum, scale velocity down
+	elseif speed > maxSpeed then
+		self.velocity = self.velocity.Unit * maxSpeed
+	end
+end
+
+-- get projectile age
+function ProjectileHandler:GetAge()
+	return tick() - self.startTime
+end
+
+-- check if projectile expired
+function ProjectileHandler:IsExpired()
+	return not self.alive
 end
 
 --// assign hit callback
@@ -246,50 +284,53 @@ end
 --// extra Utility
 
 function ProjectileHandler:GetPosition()
-    return self.position
+	return self.position
 end
 
 -- get current velocity
 function ProjectileHandler:GetVelocity()
-    return self.velocity
+	return self.velocity
 end
 
 -- force set velocity
 function ProjectileHandler:SetVelocity(newVel)
-    self.velocity = newVel
+	self.velocity = newVel
 end
 
 -- force set position
 function ProjectileHandler:SetPosition(newPos)
-    self.position = newPos
+	self.position = newPos
 end
 
 --// debug utilities
 
 -- enable or disable debug visuals for this projectile
 function ProjectileHandler:EnableDebug(value)
-    self.debugEnabled = value
+	self.debugEnabled = value
 end
 
 -- check if debug is enabled
 function ProjectileHandler:IsDebugEnabled()
-    return self.debugEnabled or false
+	return self.debugEnabled or false
 end
 
 -- print projectile state
 function ProjectileHandler:PrintState()
-    print("Projectile state:")
-    print("Position:", self.position)
-    print("Velocity:", self.velocity)
-    print("Alive:", self.alive)
-    print("HasHit:", self.hasHit)
-    print("StartTime:", self.startTime)
+	print("Projectile state:")
+	print("Position:", self.position)
+	print("Velocity:", self.velocity)
+	print("Alive:", self.alive)
+	print("HasHit:", self.hasHit)
+	print("StartTime:", self.startTime)
 end
 
 --// return module table
 return ProjectileHandler
 
-
 --[[
-Bounce logic isn't fully intergrated into the game, it's no longer needed in my game, I just kept it in for the 200 line limit
-]]
+Bounce logic isn't fully intergrated into the game,
+it's no longer needed in my game,
+I just kept it in for the 200 line limit
+]]```
+
+How many lines of code excluding all comments and whitespace
