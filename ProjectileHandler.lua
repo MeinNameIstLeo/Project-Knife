@@ -152,7 +152,7 @@ function ProjectileHandler:Update(dt)
 			if result.Normal then
 				self.velocity = self.velocity - 2 * self.velocity:Dot(result.Normal) * result.Normal
 			end
-			-- continue 
+			-- continue simulation after bounce
 			return
 		end
 
@@ -276,7 +276,7 @@ function ProjectileHandler:Cleanup()
 	self.connections = {}
 end
 
---//  Utility
+--// extra Utility
 
 -- get current position
 function ProjectileHandler:GetPosition()
